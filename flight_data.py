@@ -1,11 +1,9 @@
 from dataclasses import dataclass, field
 from typing import List
 
-
 @dataclass(frozen=True)
 class FlightData:
-    """Normalized flight information used by the application."""
-
+    """Normalized flight information."""
     departure_city: str
     departure_airport_code: str
     destination: str
@@ -18,6 +16,5 @@ class FlightData:
     booking_url: str = ""
 
     def __str__(self) -> str:
-        route = f"{self.departure_airport_code} → {self.destination_airport_code}"
         stops = "direct" if self.stop_overs == 0 else f"{self.stop_overs} stop(s)"
-        return f"{route} | €{self.price:.2f} | {stops}"
+        return f"{self.departure_airport_code} → {self.destination_airport_code} | €{self.price:.2f} | {stops}
