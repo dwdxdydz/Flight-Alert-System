@@ -1,84 +1,113 @@
-import requests
-from flight_data import FlightData
 from datetime import datetime
+from typing import Any, Dict, Optional
+
+import requests
+
+from flight_data import FlightData
+
 
 class FlightSearch:
-    def __init__(self, endpoint: str, api_key: str):
-        self.endpoint = endpoint
-        self.api_key = api_key
-        self.headers = {
-            "apiKey": self.api_key
-        }
+    """Search and normalize flight data from a Tequila-compatible API."""
 
-    def get_iata_code(self, city: str) -> str:
-        """Retrieve the IATA code for a given city."""
-        response = requests.get(url=f"{self.endpoint}/locations/query", headers=self.headers, params={"term": city})
-        response.raise_for_status()  # Raise an error for bad responses
-        result = response.json()
-        try:
-            iata = result['locations'][0]['code']
-        except (IndexError, KeyError):
-            print(f"No IATA code found for city: {city}")
+    def __init__(self, endpoint: str, api_key: str, timeout: int = 20):
+        if not endpoint:
+            raise ValueError("TEQUILA_ENDPOINT is required")
+        if not api_key:
+            raise ValueError("TEQUILA_API_KEY is required")
+
+        self.endpoint = endpoint.rstrip("/")
+        self.headers = {"apikey": api_key}
+        self.timeout = timeout
+
+    def get_iata_code(self, city: str) -> Optional[str]:
+        if not city:
             return None
-        return iata
 
-    def search_flights(self, destination: str, date_from: datetime, date_to: datetime, max_stops: int) -> FlightData:
-        """Search for flights to the specified destination within given dates and max stops."""
+        response = requests.get(
+            f"{self.endpoint}/locations/query",
+            headers=self.headers,
+            params={"term": city, "location_types": "airport"},
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        locations = response.json().get("locations", [])
+
+        for location in locations:
+            code = location.get("code")
+            if code:
+                return code
+        return None
+
+    def search_flights(
+        self,
+        destination: str,
+        date_from: datetime,
+        date_to: datetime,
+        max_stops: int = 0,
+    ) -> Optional[FlightData]:
+        if not destination:
+            return None
+
         params = {
             "fly_from": "AMS",
             "fly_to": destination,
-            "date_from": date_from.strftime('%d/%m/%Y'),
-            "date_to": date_to.strftime('%d/%m/%Y'),
+            "date_from": date_from.strftime("%d/%m/%Y"),
+            "date_to": date_to.strftime("%d/%m/%Y"),
             "nights_in_dst_from": 7,
             "nights_in_dst_to": 28,
             "max_stopovers": max_stops,
             "curr": "EUR",
-            "one_for_city": 1
+            "one_for_city": 1,
+            "sort": "price",
         }
 
-        def fetch_flight_data(params):
-            """Fetch flight data from the API."""
-            response = requests.get(url=f"{self.endpoint}/v2/search", headers=self.headers, params=params)
-            response.raise_for_status()  # Raise an error for bad responses
-            return response.json()
+        result = self._request_search(params)
+        flight = self._parse_flight_data(result)
 
-        result = fetch_flight_data(params)
-        flight_data = self._parse_flight_data(result)
-
-        if flight_data is None:
-            # Try with max_stopovers set to 2 if no flights found
+        if flight is None and max_stops == 0:
             params["max_stopovers"] = 2
-            result = fetch_flight_data(params)
-            flight_data = self._parse_flight_data(result)
+            flight = self._parse_flight_data(self._request_search(params))
 
-        if flight_data:
-            print(f"{flight_data.destination}: €{flight_data.price}, via {flight_data.via_cities}")
-            return flight_data
-        else:
-            print(f"No flights found for {destination}.")
+        return flight
+
+    def _request_search(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        response = requests.get(
+            f"{self.endpoint}/v2/search",
+            headers=self.headers,
+            params=params,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    @staticmethod
+    def _parse_flight_data(result: Dict[str, Any]) -> Optional[FlightData]:
+        flights = result.get("data", [])
+        if not flights:
             return None
 
-    def _parse_flight_data(self, result) -> FlightData:
-        """Parse flight data from API result into a FlightData object."""
-        try:
-            data = result['data'][0]
-        except (IndexError, KeyError):
+        data = flights[0]
+        route = data.get("route", [])
+        if not route:
             return None
 
-        stop_overs = 0
-        via_cities = []
-        outbound_date = data['route'][0]['local_departure'].split("T")[0]
-        return_date = data['route'][-1]['local_departure'].split("T")[0]
+        via_cities = [
+            segment.get("cityTo", "")
+            for segment in route[:-1]
+            if segment.get("cityTo")
+        ]
 
-        for route in data['route']:
-            if route['flyTo'] != 'AMS' and route['cityCodeTo'] != data['cityTo']:
-                via_cities.append(route['cityTo'])
-                stop_overs += 1
+        booking_url = data.get("deep_link", "")
 
         return FlightData(
-            departure_city=data['cityFrom'],
-            dep_code=data['flyFrom'],
-            destination=data['cityTo'],
-            dest_code=data['flyTo'],
-            price=data['price'],
-       
+            departure_city=data.get("cityFrom", ""),
+            departure_airport_code=data.get("flyFrom", ""),
+            destination=data.get("cityTo", ""),
+            destination_airport_code=data.get("flyTo", ""),
+            price=float(data.get("price", 0)),
+            outbound_date=route[0].get("local_departure", "")[:10],
+            return_date=route[-1].get("local_departure", "")[:10],
+            stop_overs=max(0, len(route) - 1),
+            via_cities=via_cities,
+            booking_url=booking_url,
+        )
