@@ -1,7 +1,7 @@
 import pytest
 
 from flight_data import FlightData
-from main import build_alert, env_int
+from main import build_alert, env_int, env_nonnegative_int
 
 
 def test_build_alert_includes_booking_link_and_connection_details():
@@ -36,3 +36,12 @@ def test_env_int_rejects_invalid_value(monkeypatch):
 
     with pytest.raises(ValueError, match="SEARCH_WEEKS must be an integer"):
         env_int("SEARCH_WEEKS", 26)
+
+
+def test_env_nonnegative_int_allows_zero_and_rejects_negative(monkeypatch):
+    monkeypatch.setenv("MAX_STOPOVERS", "0")
+    assert env_nonnegative_int("MAX_STOPOVERS", 0) == 0
+
+    monkeypatch.setenv("MAX_STOPOVERS", "-1")
+    with pytest.raises(ValueError, match="MAX_STOPOVERS cannot be negative"):
+        env_nonnegative_int("MAX_STOPOVERS", 0)
