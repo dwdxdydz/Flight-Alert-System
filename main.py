@@ -16,13 +16,17 @@ LOGGER = logging.getLogger(__name__)
 
 
 def env_int(name: str, default: int) -> int:
+    """Read a positive integer environment variable with a useful error."""
     value = os.getenv(name)
     if not value:
         return default
     try:
-        return int(value)
+        parsed = int(value)
     except ValueError as error:
         raise ValueError(f"{name} must be an integer") from error
+    if parsed <= 0:
+        raise ValueError(f"{name} must be greater than zero")
+    return parsed
 
 
 def build_alert(flight: FlightData, target_price: float) -> tuple[str, str]:
@@ -32,10 +36,6 @@ def build_alert(flight: FlightData, target_price: float) -> tuple[str, str]:
         "Direct flight."
         if flight.stop_overs == 0
         else f"{flight.stop_overs} stop(s), via {', '.join(flight.via_cities)}."
-def build_alert(flight, target_price: float):
-    subject = f"✈️ Flight Deal: €{flight.price:.0f} to {flight.destination}"
-    stops = "Direct flight." if flight.stop_overs == 0 else (
-        f"{flight.stop_overs} stop(s), via {', '.join(flight.via_cities)}."
     )
     body = (
         "Low-price flight alert!\n\n"
@@ -50,22 +50,35 @@ def build_alert(flight, target_price: float):
     return subject, body
 
 
-def run() -> None:
-    load_dotenv()
-    manager = DataManager(
-        os.getenv("SHEETY_ENDPOINT", ""), os.getenv("SHEETY_BEARER_TOKEN", "")
-    )
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Search for flights below configured target prices.")
-    parser.add_argument("--dry-run", action="store_true", help="Print alerts without sending emails.")
+    parser = argparse.ArgumentParser(
+        description="Search for flights below configured target prices."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print qualifying alerts without sending emails.",
+    )
     return parser.parse_args()
 
 
 def run(dry_run: bool = False) -> None:
+    """Run one complete destination scan."""
     load_dotenv()
-    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(), format="%(levelname)s %(message)s")
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
 
-    manager = DataManager(os.getenv("SHEETY_ENDPOINT", ""), os.getenv("SHEETY_BEARER_TOKEN", ""))
+    search_weeks = env_int("SEARCH_WEEKS", 26)
+    max_stopovers = int(os.getenv("MAX_STOPOVERS", "0"))
+    if max_stopovers < 0:
+        raise ValueError("MAX_STOPOVERS cannot be negative")
+
+    manager = DataManager(
+        os.getenv("SHEETY_ENDPOINT", ""),
+        os.getenv("SHEETY_BEARER_TOKEN", ""),
+    )
     search = FlightSearch(
         os.getenv("TEQUILA_ENDPOINT", ""),
         os.getenv("TEQUILA_API_KEY", ""),
@@ -78,57 +91,41 @@ def run(dry_run: bool = False) -> None:
         env_int("SMTP_PORT", 587),
     )
 
-    destinations, users = manager.get_flight_data(), manager.get_users()
+    destinations = manager.get_flight_data()
+    users = manager.get_users()
     today = datetime.now()
-    search_end = today + timedelta(weeks=env_int("SEARCH_WEEKS", 26))
+    search_end = today + timedelta(weeks=search_weeks)
 
     for destination in destinations:
         city = str(destination.get("city", "")).strip()
-        code = str(destination.get("iataCode", "")).strip()
+        code = str(destination.get("iataCode", "")).strip().upper()
+
         try:
             target = float(destination.get("lowestPrice", 0))
         except (TypeError, ValueError):
-            print(f"Skipping {city}: invalid lowest price.")
+            LOGGER.warning("Skipping %s: invalid target price", city or "unknown")
             continue
-        if not code:
-            code = search.get_iata_code(city)
-            if not code:
-                print(f"Skipping {city}: IATA code not found.")
-                continue
-            if destination.get("id"):
-                manager.update_flight_data(destination["id"], code)
-        flight = search.search_flights(
-            code,
-            today,
-            today + timedelta(weeks=env_int("SEARCH_WEEKS", 26)),
-            env_int("MAX_STOPOVERS", 0),
-        )
-        if flight and flight.price <= target:
-            subject, body = build_alert(flight, target)
-            for user in users:
-                if user.get("email"):
-                    notifier.send_email(subject, body, user["email"])
-                    print(f"Alert sent to {user['email']}: {flight}")
-        target = float(destination.get("lowestPrice", 0))
+
         if not city or target <= 0:
             LOGGER.warning("Skipping invalid destination row: %s", destination)
             continue
 
         if not code:
-            code = search.get_iata_code(city)
+            code = search.get_iata_code(city) or ""
             if not code:
                 LOGGER.warning("Skipping %s: IATA code not found", city)
                 continue
             if destination.get("id"):
                 manager.update_flight_data(destination["id"], code)
 
-        flight = search.search_flights(
-            code,
-            today,
-            search_end,
-            env_int("MAX_STOPOVERS", 0),
-        )
+        try:
+            flight = search.search_flights(code, today, search_end, max_stopovers)
+        except Exception:
+            LOGGER.exception("Flight search failed for %s (%s)", city, code)
+            continue
+
         if not flight or flight.price > target:
+            LOGGER.info("No qualifying deal for %s", city)
             continue
 
         subject, body = build_alert(flight, target)
@@ -140,7 +137,11 @@ def run(dry_run: bool = False) -> None:
             email = str(user.get("email", "")).strip()
             if not email:
                 continue
-            notifier.send_email(subject, body, email)
+            try:
+                notifier.send_email(subject, body, email)
+            except Exception:
+                LOGGER.exception("Failed to send alert to %s", email)
+                continue
             LOGGER.info("Alert sent to %s: %s", email, flight)
 
 
