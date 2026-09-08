@@ -113,8 +113,6 @@ class FlightSearch:
             if not segments:
                 continue
 
-            # Kiwi returns both the outbound and inbound legs in ``route``.  A
-            # direct return trip therefore has two segments, not one stop.
             def is_return_segment(segment: dict[str, Any]) -> bool:
                 return str(segment.get("return", "0")) == "1"
 
@@ -126,6 +124,14 @@ class FlightSearch:
             inbound_segments = [segment for segment in segments if is_return_segment(segment)]
             first_segment = outbound_segments[0]
             return_segment = inbound_segments[0] if inbound_segments else segments[-1]
+
+            airlines = data.get("airlines", [])
+            airline = ", ".join(str(item) for item in airlines if item)
+            duration_seconds = data.get("duration", {}).get("total")
+            try:
+                duration_minutes = round(float(duration_seconds) / 60) if duration_seconds else None
+            except (TypeError, ValueError):
+                duration_minutes = None
 
             return FlightData(
                 departure_city=str(data.get("cityFrom", "")),
@@ -142,5 +148,7 @@ class FlightSearch:
                     if segment.get("cityTo")
                 ],
                 booking_url=str(data.get("deep_link", "")),
+                airline=airline,
+                duration_minutes=duration_minutes,
             )
         return None
