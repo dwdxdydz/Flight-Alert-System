@@ -81,8 +81,8 @@ class FlightDatabase:
         query = """
         INSERT INTO flight_prices (
             searched_at, origin, destination, departure_date, return_date,
-            airline, stops, price, currency, target_price, booking_url
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            airline, stops, price, currency, duration_minutes, target_price, booking_url
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         outbound = datetime.fromisoformat(flight.outbound_date).date()
         return_date = None
@@ -95,10 +95,11 @@ class FlightDatabase:
             flight.destination_airport_code,
             outbound,
             return_date,
-            ", ".join(flight.via_cities) if flight.via_cities else None,
+            flight.airline or None,
             flight.stop_overs,
             flight.price,
             "EUR",
+            flight.duration_minutes,
             target_price,
             flight.booking_url or None,
         )
