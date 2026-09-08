@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 from data_manager import DataManager
+from database import FlightDatabase
 from flight_data import FlightData
 from flight_search import FlightSearch
 from notification_manager import NotificationManager
@@ -78,7 +79,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def run(dry_run: bool = False) -> None:
-    """Run one complete destination scan."""
+    """Run one complete destination scan and persist observed prices."""
     load_dotenv()
     logging.basicConfig(
         level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -103,6 +104,8 @@ def run(dry_run: bool = False) -> None:
         os.getenv("SMTP_HOST", ""),
         env_int("SMTP_PORT", 587),
     )
+    database = FlightDatabase()
+    database.initialize()
 
     destinations = manager.get_flight_data()
     users = manager.get_users()
@@ -137,7 +140,18 @@ def run(dry_run: bool = False) -> None:
             LOGGER.exception("Flight search failed for %s (%s)", city, code)
             continue
 
-        if not flight or flight.price > target:
+        if not flight:
+            LOGGER.info("No flight found for %s", city)
+            continue
+
+        try:
+            observation_id = database.save_flight(flight, target)
+            LOGGER.info("Saved price observation %s for %s: %s", observation_id, city, flight)
+        except Exception:
+            LOGGER.exception("Failed to save price observation for %s", city)
+            continue
+
+        if flight.price > target:
             LOGGER.info("No qualifying deal for %s", city)
             continue
 
