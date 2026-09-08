@@ -1,0 +1,42 @@
+name: Flight Price Monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+jobs:
+  monitor:
+    if: ${{ secrets.TEQUILA_API_KEY != '' && secrets.SHEETY_BEARER_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run flight monitor
+        env:
+          SHEETY_ENDPOINT: ${{ secrets.SHEETY_ENDPOINT }}
+          SHEETY_BEARER_TOKEN: ${{ secrets.SHEETY_BEARER_TOKEN }}
+          TEQUILA_ENDPOINT: ${{ secrets.TEQUILA_ENDPOINT }}
+          TEQUILA_API_KEY: ${{ secrets.TEQUILA_API_KEY }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+          MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+          MYSQL_USER: ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          ORIGIN_AIRPORT: ${{ secrets.ORIGIN_AIRPORT }}
+          SEARCH_WEEKS: ${{ secrets.SEARCH_WEEKS }}
+          MAX_STOPOVERS: ${{ secrets.MAX_STOPOVERS }}
+        run: python main.py
