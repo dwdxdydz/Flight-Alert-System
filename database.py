@@ -49,7 +49,20 @@ class FlightDatabase:
                 connection.close()
 
     def initialize(self) -> None:
-        """Create the historical observations table when it does not exist."""
+        """Create the configured database and historical table if needed."""
+        server_config = {key: value for key, value in self.config.items() if key != "database"}
+        try:
+            server_connection = mysql.connector.connect(**server_config)
+            server_cursor = server_connection.cursor()
+            database_name = self.config["database"]
+            server_cursor.execute(
+                f"CREATE DATABASE IF NOT EXISTS `{database_name}` CHARACTER SET utf8mb4"
+            )
+            server_cursor.close()
+            server_connection.close()
+        except Error as error:
+            raise DatabaseError(f"Could not initialize MySQL database: {error}") from error
+
         query = """
         CREATE TABLE IF NOT EXISTS flight_prices (
             id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -85,22 +98,11 @@ class FlightDatabase:
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         outbound = datetime.fromisoformat(flight.outbound_date).date()
-        return_date = None
-        if flight.return_date:
-            return_date = datetime.fromisoformat(flight.return_date).date()
-
+        return_date = datetime.fromisoformat(flight.return_date).date() if flight.return_date else None
         values = (
-            datetime.now(),
-            flight.departure_airport_code,
-            flight.destination_airport_code,
-            outbound,
-            return_date,
-            flight.airline or None,
-            flight.stop_overs,
-            flight.price,
-            "EUR",
-            flight.duration_minutes,
-            target_price,
+            datetime.now(), flight.departure_airport_code, flight.destination_airport_code,
+            outbound, return_date, flight.airline or None, flight.stop_overs,
+            flight.price, "EUR", flight.duration_minutes, target_price,
             flight.booking_url or None,
         )
         with self.connection() as connection:
