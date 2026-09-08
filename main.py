@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 
+from alert_engine import AlertEngine
+from analytics import FlightAnalytics
 from data_manager import DataManager
 from database import FlightDatabase
 from flight_data import FlightData
@@ -45,36 +47,42 @@ def env_nonnegative_int(name: str, default: int) -> int:
     return parsed
 
 
-def build_alert(flight: FlightData, target_price: float) -> tuple[str, str]:
-    """Build a plain-text notification for a qualifying flight."""
+def env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if not value:
+        return default
+    try:
+        return float(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be a number") from error
+
+
+def build_alert(flight: FlightData, target_price: float, reasons: tuple[str, ...]) -> tuple[str, str]:
+    """Build a plain-text notification with the rules that triggered it."""
     subject = f"✈️ Flight Deal: €{flight.price:.0f} to {flight.destination}"
-    stops = (
-        "Direct flight."
-        if flight.stop_overs == 0
-        else f"{flight.stop_overs} stop(s), via {', '.join(flight.via_cities)}."
+    stops = "Direct flight." if flight.stop_overs == 0 else (
+        f"{flight.stop_overs} stop(s), via {', '.join(flight.via_cities)}."
     )
     body = (
-        "Low-price flight alert!\n\n"
+        "Flight price alert!\n\n"
         f"Route: {flight.departure_city} ({flight.departure_airport_code}) → "
         f"{flight.destination} ({flight.destination_airport_code})\n"
         f"Price: €{flight.price:.2f} (target: €{target_price:.2f})\n"
         f"Dates: {flight.outbound_date} → {flight.return_date}\n"
+        f"Airline: {flight.airline or 'Unknown'}\n"
         f"Stops: {stops}\n"
+        f"Alert reasons: {', '.join(reasons)}\n"
     )
+    if flight.duration_minutes is not None:
+        body += f"Duration: {flight.duration_minutes} minutes\n"
     if flight.booking_url:
         body += f"\nBook/search: {flight.booking_url}\n"
     return subject, body
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Search for flights below configured target prices."
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print qualifying alerts without sending emails.",
-    )
+    parser = argparse.ArgumentParser(description="Search and monitor flight prices.")
+    parser.add_argument("--dry-run", action="store_true", help="Print alerts without sending emails.")
     return parser.parse_args()
 
 
@@ -88,24 +96,24 @@ def run(dry_run: bool = False) -> None:
 
     search_weeks = env_int("SEARCH_WEEKS", 26)
     max_stopovers = env_nonnegative_int("MAX_STOPOVERS", 0)
+    significant_drop = env_float("SIGNIFICANT_DROP_PERCENT", 10.0)
 
-    manager = DataManager(
-        os.getenv("SHEETY_ENDPOINT", ""),
-        os.getenv("SHEETY_BEARER_TOKEN", ""),
-    )
+    manager = DataManager(os.getenv("SHEETY_ENDPOINT", ""), os.getenv("SHEETY_BEARER_TOKEN", ""))
     search = FlightSearch(
         os.getenv("TEQUILA_ENDPOINT", ""),
         os.getenv("TEQUILA_API_KEY", ""),
         origin=os.getenv("ORIGIN_AIRPORT", "AMS"),
+        max_retries=env_int("API_MAX_RETRIES", 3),
+        backoff_seconds=env_float("API_BACKOFF_SECONDS", 1.0),
     )
     notifier = NotificationManager(
-        os.getenv("FROM_EMAIL", ""),
-        os.getenv("EMAIL_PASSWORD", ""),
-        os.getenv("SMTP_HOST", ""),
-        env_int("SMTP_PORT", 587),
+        os.getenv("FROM_EMAIL", ""), os.getenv("EMAIL_PASSWORD", ""),
+        os.getenv("SMTP_HOST", ""), env_int("SMTP_PORT", 587),
     )
     database = FlightDatabase()
     database.initialize()
+    analytics = FlightAnalytics(database)
+    alert_engine = AlertEngine(significant_drop)
 
     destinations = manager.get_flight_data()
     users = manager.get_users()
@@ -115,13 +123,11 @@ def run(dry_run: bool = False) -> None:
     for destination in destinations:
         city = str(destination.get("city", "")).strip()
         code = str(destination.get("iataCode", "")).strip().upper()
-
         try:
             target = float(destination.get("lowestPrice", 0))
         except (TypeError, ValueError):
             LOGGER.warning("Skipping %s: invalid target price", city or "unknown")
             continue
-
         if not city or not math.isfinite(target) or target <= 0:
             LOGGER.warning("Skipping invalid destination row: %s", destination)
             continue
@@ -139,10 +145,13 @@ def run(dry_run: bool = False) -> None:
         except Exception:
             LOGGER.exception("Flight search failed for %s (%s)", city, code)
             continue
-
         if not flight:
             LOGGER.info("No flight found for %s", city)
             continue
+
+        previous_price = analytics.latest_price(flight.departure_airport_code, flight.destination_airport_code)
+        previous_lowest = analytics.lowest_price(flight.departure_airport_code, flight.destination_airport_code)
+        decision = alert_engine.evaluate(flight.price, target, previous_price, previous_lowest)
 
         try:
             observation_id = database.save_flight(flight, target)
@@ -151,11 +160,11 @@ def run(dry_run: bool = False) -> None:
             LOGGER.exception("Failed to save price observation for %s", city)
             continue
 
-        if flight.price > target:
-            LOGGER.info("No qualifying deal for %s", city)
+        if not decision.should_alert:
+            LOGGER.info("No alert condition met for %s", city)
             continue
 
-        subject, body = build_alert(flight, target)
+        subject, body = build_alert(flight, target, decision.reasons)
         if dry_run:
             LOGGER.info("DRY RUN\n%s\n%s", subject, body)
             continue
