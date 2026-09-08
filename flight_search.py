@@ -1,5 +1,6 @@
 from datetime import datetime
 import math
+import time
 from typing import Any
 
 import requests
@@ -11,31 +12,40 @@ class FlightSearch:
     """Search and normalize flight data from a Tequila-compatible API."""
 
     def __init__(
-        self, endpoint: str, api_key: str, origin: str = "AMS", timeout: int = 20
+        self,
+        endpoint: str,
+        api_key: str,
+        origin: str = "AMS",
+        timeout: int = 20,
+        max_retries: int = 3,
+        backoff_seconds: float = 1.0,
     ) -> None:
         if not endpoint or not api_key:
             raise ValueError("TEQUILA_ENDPOINT and TEQUILA_API_KEY are required")
         if timeout <= 0:
             raise ValueError("timeout must be positive")
+        if max_retries < 1:
+            raise ValueError("max_retries must be at least 1")
+        if backoff_seconds < 0:
+            raise ValueError("backoff_seconds cannot be negative")
 
         self.endpoint = endpoint.rstrip("/")
         self.origin = origin.strip().upper()
         self.timeout = timeout
+        self.max_retries = max_retries
+        self.backoff_seconds = backoff_seconds
         self.headers = {"apikey": api_key}
 
     def get_iata_code(self, city: str) -> str | None:
-        """Return the first airport IATA code matching *city*, if one is available."""
+        """Return the first airport IATA code matching *city*, if available."""
         if not city.strip():
             return None
 
-        response = requests.get(
+        response = self._get(
             f"{self.endpoint}/locations/query",
-            headers=self.headers,
             params={"term": city, "location_types": "airport"},
-            timeout=self.timeout,
         )
-        response.raise_for_status()
-        for location in response.json().get("locations", []):
+        for location in response.get("locations", []):
             code = location.get("code")
             if code:
                 return str(code).upper()
@@ -75,15 +85,30 @@ class FlightSearch:
             flight = self._parse_flight_data(self._request_search(params))
         return flight
 
+    def _get(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
+        """GET JSON with bounded retries and exponential backoff."""
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries):
+            try:
+                response = requests.get(
+                    url, headers=self.headers, params=params, timeout=self.timeout
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise ValueError("Flight API returned a non-object JSON response")
+                return payload
+            except (requests.RequestException, ValueError) as error:
+                last_error = error
+                if attempt == self.max_retries - 1:
+                    break
+                delay = self.backoff_seconds * (2**attempt)
+                if delay:
+                    time.sleep(delay)
+        raise RuntimeError("Flight API request failed after retries") from last_error
+
     def _request_search(self, params: dict[str, Any]) -> dict[str, Any]:
-        response = requests.get(
-            f"{self.endpoint}/v2/search",
-            headers=self.headers,
-            params=params,
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        return response.json()
+        return self._get(f"{self.endpoint}/v2/search", params=params)
 
     @staticmethod
     def _parse_flight_data(result: dict[str, Any]) -> FlightData | None:
@@ -101,7 +126,6 @@ class FlightSearch:
             route = data.get("route", [])
             if not isinstance(route, list) or not route:
                 continue
-
             try:
                 price = float(data["price"])
             except (KeyError, TypeError, ValueError):
@@ -116,9 +140,7 @@ class FlightSearch:
             def is_return_segment(segment: dict[str, Any]) -> bool:
                 return str(segment.get("return", "0")) == "1"
 
-            outbound_segments = [
-                segment for segment in segments if not is_return_segment(segment)
-            ]
+            outbound_segments = [segment for segment in segments if not is_return_segment(segment)]
             if not outbound_segments:
                 outbound_segments = segments
             inbound_segments = [segment for segment in segments if is_return_segment(segment)]
