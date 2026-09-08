@@ -1,11 +1,9 @@
 from dataclasses import dataclass, field
 
 
-
 @dataclass(frozen=True)
 class FlightData:
     """Normalized flight information returned by the flight search provider."""
-    """Normalized flight information."""
 
     departure_city: str
     departure_airport_code: str
@@ -24,4 +22,3 @@ class FlightData:
             f"{self.departure_airport_code} → {self.destination_airport_code} "
             f"| €{self.price:.2f} | {stops}"
         )
-        return f"{self.departure_airport_code} → {self.destination_airport_code} | €{self.price:.2f} | {stops}"
