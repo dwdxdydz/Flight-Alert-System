@@ -1,4 +1,5 @@
 from datetime import datetime
+import math
 from typing import Any
 
 import requests
@@ -48,6 +49,9 @@ class FlightSearch:
         max_stops: int = 0,
     ) -> FlightData | None:
         """Find the cheapest trip, retrying with connections for direct-only searches."""
+        destination = destination.strip().upper()
+        if not destination:
+            raise ValueError("destination is required")
         if max_stops < 0:
             raise ValueError("max_stops cannot be negative")
         if date_to < date_from:
@@ -55,7 +59,7 @@ class FlightSearch:
 
         params = {
             "fly_from": self.origin,
-            "fly_to": destination.strip().upper(),
+            "fly_to": destination,
             "date_from": date_from.strftime("%d/%m/%Y"),
             "date_to": date_to.strftime("%d/%m/%Y"),
             "nights_in_dst_from": 7,
@@ -84,6 +88,9 @@ class FlightSearch:
     @staticmethod
     def _parse_flight_data(result: dict[str, Any]) -> FlightData | None:
         """Convert the provider response's first valid itinerary into ``FlightData``."""
+        if not isinstance(result, dict):
+            return None
+
         flights = result.get("data", [])
         if not isinstance(flights, list):
             return None
@@ -99,9 +106,26 @@ class FlightSearch:
                 price = float(data["price"])
             except (KeyError, TypeError, ValueError):
                 continue
+            if not math.isfinite(price) or price < 0:
+                continue
 
-            first_segment = route[0] if isinstance(route[0], dict) else {}
-            last_segment = route[-1] if isinstance(route[-1], dict) else {}
+            segments = [segment for segment in route if isinstance(segment, dict)]
+            if not segments:
+                continue
+
+            # Kiwi returns both the outbound and inbound legs in ``route``.  A
+            # direct return trip therefore has two segments, not one stop.
+            def is_return_segment(segment: dict[str, Any]) -> bool:
+                return str(segment.get("return", "0")) == "1"
+
+            outbound_segments = [
+                segment for segment in segments if not is_return_segment(segment)
+            ]
+            if not outbound_segments:
+                outbound_segments = segments
+            inbound_segments = [segment for segment in segments if is_return_segment(segment)]
+            first_segment = outbound_segments[0]
+            return_segment = inbound_segments[0] if inbound_segments else segments[-1]
 
             return FlightData(
                 departure_city=str(data.get("cityFrom", "")),
@@ -110,12 +134,12 @@ class FlightSearch:
                 destination_airport_code=str(data.get("flyTo", "")),
                 price=price,
                 outbound_date=str(first_segment.get("local_departure", ""))[:10],
-                return_date=str(last_segment.get("local_departure", ""))[:10],
-                stop_overs=max(0, len(route) - 1),
+                return_date=str(return_segment.get("local_departure", ""))[:10],
+                stop_overs=max(0, len(outbound_segments) - 1),
                 via_cities=[
                     str(segment["cityTo"])
-                    for segment in route[:-1]
-                    if isinstance(segment, dict) and segment.get("cityTo")
+                    for segment in outbound_segments[:-1]
+                    if segment.get("cityTo")
                 ],
                 booking_url=str(data.get("deep_link", "")),
             )

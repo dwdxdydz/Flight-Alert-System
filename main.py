@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import math
 import os
 from datetime import datetime, timedelta
 
@@ -26,6 +27,20 @@ def env_int(name: str, default: int) -> int:
         raise ValueError(f"{name} must be an integer") from error
     if parsed <= 0:
         raise ValueError(f"{name} must be greater than zero")
+    return parsed
+
+
+def env_nonnegative_int(name: str, default: int) -> int:
+    """Read a non-negative integer environment variable with a useful error."""
+    value = os.getenv(name)
+    if not value:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be an integer") from error
+    if parsed < 0:
+        raise ValueError(f"{name} cannot be negative")
     return parsed
 
 
@@ -71,9 +86,7 @@ def run(dry_run: bool = False) -> None:
     )
 
     search_weeks = env_int("SEARCH_WEEKS", 26)
-    max_stopovers = int(os.getenv("MAX_STOPOVERS", "0"))
-    if max_stopovers < 0:
-        raise ValueError("MAX_STOPOVERS cannot be negative")
+    max_stopovers = env_nonnegative_int("MAX_STOPOVERS", 0)
 
     manager = DataManager(
         os.getenv("SHEETY_ENDPOINT", ""),
@@ -106,7 +119,7 @@ def run(dry_run: bool = False) -> None:
             LOGGER.warning("Skipping %s: invalid target price", city or "unknown")
             continue
 
-        if not city or target <= 0:
+        if not city or not math.isfinite(target) or target <= 0:
             LOGGER.warning("Skipping invalid destination row: %s", destination)
             continue
 
