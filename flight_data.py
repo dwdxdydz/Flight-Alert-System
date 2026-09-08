@@ -15,6 +15,8 @@ class FlightData:
     stop_overs: int = 0
     via_cities: list[str] = field(default_factory=list)
     booking_url: str = ""
+    airline: str = ""
+    duration_minutes: int | None = None
 
     def __str__(self) -> str:
         stops = "direct" if self.stop_overs == 0 else f"{self.stop_overs} stop(s)"
