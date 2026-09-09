@@ -1,11 +1,15 @@
-# Flight Price Alert System
+# ✈️ Flight Price Alert & Analytics System
 
-An automated flight-price monitoring and analytics application built with Python, MySQL, Streamlit and Plotly. It searches configured routes, stores every observed fare, compares prices with target thresholds, provides historical analytics, and sends email alerts for qualifying deals.
+An automated flight-price monitoring and analytics application built with **Python, MySQL, Streamlit, and Plotly**. It searches configured routes, stores historical fare observations, compares prices with target thresholds, generates analytics, and sends email alerts for qualifying deals.
+
+## Why this project?
+
+The project evolved from a simple flight-price alert script into an end-to-end data application demonstrating **API integration, data collection, relational database design, SQL analytics, dashboarding, automation, testing, and alerting**.
 
 ## Architecture
 
 ```text
-Destination data / subscribers
+Destination / subscriber data
             ↓
        DataManager
             ↓
@@ -15,7 +19,7 @@ Destination data / subscribers
             ↓
        MySQL history
         ↙         ↘
-   Analytics     Alert rule
+   Analytics     Alert Engine
       ↓              ↓
  Streamlit         Email
       ↓
@@ -25,19 +29,27 @@ Destination data / subscribers
 ## Features
 
 - Configurable origin, search horizon, and maximum stopovers
-- Automatic IATA-code lookup for destinations
-- Normalized flight data model with airline and duration
-- Historical price persistence in MySQL
-- Timestamped route, date, airline, stopover and fare observations
-- Dashboard metrics for current, lowest and average prices
-- Target-vs-actual price variance
+- Automatic IATA airport-code lookup
+- Normalized flight data model
+- Airline, duration, route, date, stopover, and fare tracking
+- Historical price persistence in **MySQL**
+- Timestamped price observations
+- Lowest, average, and latest price analytics
+- Target-vs-actual variance analysis
 - Historical price trend visualization with Plotly
 - Cheapest-destination ranking
+- Price-drop and historical-low alert rules
 - SMTP email notifications
-- Environment-based secrets
-- `--dry-run` mode for safe alert testing
-- Unit tests for flight parsing and analytics
-- GitHub Actions CI
+- Retry/backoff for API requests
+- Application logging
+- `--dry-run` mode
+- Unit tests and GitHub Actions CI
+
+## Database
+
+Each successful flight search is stored in the `flight_prices` table with the search timestamp, route, travel dates, airline, stops, fare, currency, duration, target price, and booking URL.
+
+The historical dataset makes it possible to analyze price trends instead of evaluating only the current fare.
 
 ## Setup
 
@@ -48,9 +60,9 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Configure the API, SMTP and MySQL values in `.env`. The application can create the configured MySQL database and its `flight_prices` table automatically, provided the MySQL user has permission to create databases.
+Configure the flight API, SMTP, data-source, and MySQL credentials in `.env`.
 
-Required MySQL variables:
+Example:
 
 ```text
 MYSQL_HOST=127.0.0.1
@@ -60,14 +72,16 @@ MYSQL_PASSWORD=your_password
 MYSQL_DATABASE=flight_alert
 ```
 
-## Collect historical prices
+The application initializes the required historical table when it starts, provided the MySQL user has the necessary permissions.
+
+## Collect flight prices
 
 ```bash
 python main.py --dry-run
 python main.py
 ```
 
-Every successful flight search is persisted before the alert threshold is evaluated. This creates the historical dataset used by the dashboard.
+Every successful search is persisted before alert rules are evaluated.
 
 ## Dashboard
 
@@ -77,28 +91,28 @@ After collecting observations:
 streamlit run dashboard.py
 ```
 
-The dashboard provides:
+The dashboard provides current/lowest/average fares, target-vs-actual variance, interactive price trends, airline and stopover information, and cheapest-destination rankings.
 
-- Current, lowest and average fare
-- Target-vs-actual variance
-- Interactive historical price trend
-- Airline and stopover information in chart tooltips
-- Cheapest destinations from the configured origin
-
-## Test
+## Testing
 
 ```bash
 pytest -q
 ```
 
-## Environment variables
+## Configuration
 
-The main application supports `ORIGIN_AIRPORT` (default `AMS`), `SEARCH_WEEKS` (default `26`), `MAX_STOPOVERS` (default `0`), `SMTP_PORT` (default `587`) and `LOG_LEVEL` (default `INFO`), in addition to the API, SMTP and MySQL credentials.
+Important variables include `ORIGIN_AIRPORT` (default `AMS`), `SEARCH_WEEKS` (default `26`), `MAX_STOPOVERS` (default `0`), `LOG_LEVEL` (default `INFO`), `SMTP_PORT` (default `587`), MySQL settings, API credentials, and SMTP credentials.
 
-## Roadmap
+## Portfolio value
 
-- Scheduled execution
-- Retry with exponential backoff
-- Structured application logging and run metrics
-- Smarter alerts for significant price drops and new historical lows
-- Additional dashboard filters and business KPIs
+- **Data Analyst:** SQL, historical datasets, KPIs, trends, variance analysis, Plotly
+- **Business Analyst:** target-vs-actual analysis, business rules, decision-support dashboard
+- **Python/SDE:** API integration, database layer, retries, logging, testing, automation
+
+## Future improvements
+
+- Advanced dashboard filters and KPIs
+- Price forecasting
+- Route-level anomaly detection
+- Containerized deployment
+- Cloud database deployment
