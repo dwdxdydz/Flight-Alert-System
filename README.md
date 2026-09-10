@@ -1,57 +1,130 @@
 # ✈️ Flight Price Alert & Analytics System
 
-An automated flight-price monitoring and analytics application built with **Python, MySQL, Streamlit, and Plotly**. It searches configured routes, stores historical fare observations, compares prices with target thresholds, generates analytics, and sends email alerts for qualifying deals.
+## What is this project?
 
-## Why this project?
+This is a small application that **checks flight prices automatically** and tells you when a flight becomes cheap enough to buy.
 
-The project evolved from a simple flight-price alert script into an end-to-end data application demonstrating **API integration, data collection, relational database design, SQL analytics, dashboarding, automation, testing, and alerting**.
+Instead of checking the same flight again and again yourself, the application can:
 
-## Architecture
+1. Search for flight prices.
+2. Save the prices it finds.
+3. Compare the price with your target price.
+4. Detect useful price drops.
+5. Send an email when a good deal is found.
+6. Show the collected prices in a dashboard.
+
+Think of it as a **personal flight-price watchdog**.
+
+## Example
+
+Suppose you want to travel from Amsterdam to another city and you want to pay no more than €300.
+
+The application might see:
 
 ```text
-Destination / subscriber data
-            ↓
-       DataManager
-            ↓
-       FlightSearch
-            ↓
-      FlightData model
-            ↓
-       MySQL history
-        ↙         ↘
-   Analytics     Alert Engine
-      ↓              ↓
- Streamlit         Email
-      ↓
-    Plotly
+Monday     €420
+Tuesday    €390
+Wednesday  €340
+Thursday   €285  ← Target reached!
 ```
 
-## Features
+The application saves these prices and can send you an email when the €300 target is reached.
 
-- Configurable origin, search horizon, and maximum stopovers
-- Automatic IATA airport-code lookup
-- Normalized flight data model
-- Airline, duration, route, date, stopover, and fare tracking
-- Historical price persistence in **MySQL**
-- Timestamped price observations
-- Lowest, average, and latest price analytics
-- Target-vs-actual variance analysis
-- Historical price trend visualization with Plotly
-- Cheapest-destination ranking
-- Price-drop and historical-low alert rules
-- SMTP email notifications
-- Retry/backoff for API requests
-- Application logging
-- `--dry-run` mode
-- Unit tests and GitHub Actions CI
+## How does it work?
 
-## Database
+```text
+Flight search settings
+        ↓
+Search flight API
+        ↓
+Get flight price
+        ↓
+Save price in MySQL
+        ↓
+Compare with previous prices
+        ↓
+Is this a good deal?
+        ↓
+      Yes
+        ↓
+Send email alert
+        ↓
+Show results in dashboard
+```
 
-Each successful flight search is stored in the `flight_prices` table with the search timestamp, route, travel dates, airline, stops, fare, currency, duration, target price, and booking URL.
+## What can it do?
 
-The historical dataset makes it possible to analyze price trends instead of evaluating only the current fare.
+- Search flights for configured destinations.
+- Automatically find airport codes when needed.
+- Track airline, travel dates, stops, duration and price.
+- Remember old prices using MySQL.
+- Show the lowest, average and latest prices.
+- Show how much a price is above or below the target.
+- Detect significant price drops.
+- Detect a new lowest historical price.
+- Send email notifications.
+- Retry a failed flight-API request instead of immediately giving up.
+- Keep application logs so problems are easier to investigate.
+- Run safely in `dry-run` mode while testing.
+- Run automatically using GitHub Actions.
+- Run automated tests before changes are accepted.
+
+## Why use MySQL?
+
+The application does not only need to know **today's price**. It also needs to remember what the price was yesterday, last week, and so on.
+
+MySQL stores this history.
+
+For example:
+
+```text
+Date         Route          Price
+----------------------------------
+01 Sep       AMS → PAR      €420
+03 Sep       AMS → PAR      €390
+05 Sep       AMS → PAR      €315
+08 Sep       AMS → PAR      €285
+```
+
+Because the old prices are stored, the application can answer questions such as:
+
+- What is the cheapest price we have seen?
+- What is the average price?
+- Is the price going down?
+- Is today's price a new low?
+- How far are we from the target price?
+
+## Dashboard
+
+The project includes a Streamlit dashboard that turns the stored data into easy-to-read charts and numbers.
+
+It can show:
+
+- Current price
+- Lowest price
+- Average price
+- Price history
+- Target price vs actual price
+- Cheapest destinations
+- Airlines and number of stops
+
+Start it with:
+
+```bash
+streamlit run dashboard.py
+```
+
+## Email alerts
+
+The application can send an email when a useful event happens, such as:
+
+- The price reaches your target.
+- The price drops significantly.
+- A new historical low is found.
 
 ## Setup
+
+Create a Python environment and install the required packages:
 
 ```bash
 python -m venv .venv
@@ -60,9 +133,9 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Configure the flight API, SMTP, data-source, and MySQL credentials in `.env`.
+Then add your flight API, email and MySQL details to `.env`.
 
-Example:
+Example MySQL settings:
 
 ```text
 MYSQL_HOST=127.0.0.1
@@ -72,47 +145,68 @@ MYSQL_PASSWORD=your_password
 MYSQL_DATABASE=flight_alert
 ```
 
-The application initializes the required historical table when it starts, provided the MySQL user has the necessary permissions.
+The application creates the required database table when it starts, provided the MySQL account has permission to do so.
 
-## Collect flight prices
+## Run the application
+
+Test without sending real alerts:
 
 ```bash
 python main.py --dry-run
+```
+
+Run normally:
+
+```bash
 python main.py
 ```
 
-Every successful search is persisted before alert rules are evaluated.
-
-## Dashboard
-
-After collecting observations:
-
-```bash
-streamlit run dashboard.py
-```
-
-The dashboard provides current/lowest/average fares, target-vs-actual variance, interactive price trends, airline and stopover information, and cheapest-destination rankings.
-
-## Testing
+## Run tests
 
 ```bash
 pytest -q
 ```
 
-## Configuration
+## Main technologies
 
-Important variables include `ORIGIN_AIRPORT` (default `AMS`), `SEARCH_WEEKS` (default `26`), `MAX_STOPOVERS` (default `0`), `LOG_LEVEL` (default `INFO`), `SMTP_PORT` (default `587`), MySQL settings, API credentials, and SMTP credentials.
+- **Python** — application logic
+- **Flight API** — gets current flight prices
+- **MySQL** — stores price history
+- **Streamlit** — creates the dashboard
+- **Plotly** — creates interactive charts
+- **SMTP** — sends emails
+- **GitHub Actions** — runs the monitoring job and tests automatically
 
-## Portfolio value
+## Project structure
 
-- **Data Analyst:** SQL, historical datasets, KPIs, trends, variance analysis, Plotly
-- **Business Analyst:** target-vs-actual analysis, business rules, decision-support dashboard
-- **Python/SDE:** API integration, database layer, retries, logging, testing, automation
+```text
+main.py                 → Runs the application
+flight_search.py        → Searches for flights
+data_manager.py        → Reads destination/subscriber data
+database.py             → Saves data in MySQL
+analytics.py            → Calculates useful statistics
+alert_engine.py         → Decides when an alert should be sent
+notification_manager.py → Sends email notifications
+flight_data.py          → Represents a flight result
+dashboard.py            → Displays the analytics dashboard
+tests/                  → Automated tests
+.github/workflows/      → Automatic scheduled runs and CI
+```
+
+## What I learned from this project
+
+This project started as a simple flight-price alert script and was expanded into a complete application.
+
+It demonstrates how a real application can connect several pieces together:
+
+**API → data collection → database → analysis → dashboard → notification → automation**
+
+It is especially useful for demonstrating Python, SQL/MySQL, data analysis, dashboards, APIs and automation skills.
 
 ## Future improvements
 
-- Advanced dashboard filters and KPIs
-- Price forecasting
-- Route-level anomaly detection
-- Containerized deployment
-- Cloud database deployment
+- Add more dashboard filters.
+- Predict future flight prices.
+- Detect unusual price changes automatically.
+- Deploy the application to the cloud.
+- Add a cloud database.
