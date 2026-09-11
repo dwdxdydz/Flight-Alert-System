@@ -182,31 +182,57 @@ tests/                   → Automated tests
 .github/workflows/       → Scheduled jobs and CI
 ```
 
+## Main technologies
+
+- **Python** — application logic and data processing
+- **Flight API** — provides flight search and price information
+- **MySQL** — stores historical price data
+- **SQL** — retrieves and analyses the stored data
+- **Streamlit** — creates the dashboard
+- **Plotly** — creates interactive charts
+- **SMTP** — sends email notifications
+- **GitHub Actions** — runs scheduled automation and checks
+- **Pytest** — runs automated tests
+
 ## Technical terms explained
 
-**API** — A way for one application to communicate with another. Here, the flight API provides flight information and prices.
+**API (Application Programming Interface)** — A way for two software applications to communicate. In this project, the flight API gives the application flight information and prices.
 
-**IATA code** — The standard short code used for airports, such as `BLR` for Bengaluru and `LHR` for London Heathrow.
+**IATA code** — A short airport code used by the aviation industry, such as `BLR` for Bengaluru or `LHR` for London Heathrow.
 
-**MySQL** — A database system that stores information in tables. This project uses it to remember flight prices.
+**Database** — A system used to store information so it can be found and used later. This project stores flight-price records in MySQL.
 
-**SQL** — The language used to search, filter and calculate information inside a database.
+**MySQL** — A popular relational database system. It stores data in tables made of rows and columns.
 
-**Analytics** — Using stored data to calculate useful information such as averages, lowest prices and trends.
+**SQL (Structured Query Language)** — A language used to read, filter, insert, update and analyse data in databases.
 
-**Streamlit** — A Python framework for quickly building web applications, especially data dashboards.
+**Historical data** — Information collected and saved from previous runs. Here, it means older flight-price observations.
 
-**Plotly** — A library for creating interactive charts.
+**Analytics** — Calculations performed on data to find useful information, such as averages, lowest prices and trends.
 
-**SMTP** — A standard method used by applications to send email.
+**Target price** — The maximum price the user is willing to pay for a flight.
 
-**Exponential backoff** — If an API request fails, the application waits before trying again. The waiting time becomes longer after repeated failures.
+**Alert rule** — A condition that decides whether the application should notify the user.
 
-**Logging** — Recording useful information about what the application is doing, especially when something goes wrong.
+**Historical low** — The lowest price recorded by the application for the relevant flight search data.
 
-**GitHub Actions** — A GitHub feature that can automatically run code, tests or scheduled jobs. This project uses it for automation and CI.
+**SMTP (Simple Mail Transfer Protocol)** — A standard method used by applications to send email messages.
 
-**CI (Continuous Integration)** — Automatically checking code changes, usually by running tests, so problems are found early.
+**Exponential backoff** — When a temporary request fails, the application waits before trying again. The waiting time becomes longer after repeated failures, reducing unnecessary pressure on the API.
+
+**Logging** — Recording useful information about what the program is doing. Logs help developers understand errors and troubleshoot problems.
+
+**Streamlit** — A Python framework that makes it easy to build interactive web applications, especially dashboards.
+
+**Plotly** — A Python library for creating interactive charts and graphs.
+
+**GitHub Actions** — GitHub's automation system. It can run programs, tests and scheduled jobs automatically.
+
+**CI (Continuous Integration)** — Automatically running checks such as tests when code changes. This helps catch problems early.
+
+**Dry run** — A safe testing mode in which the program performs its processing without carrying out certain real-world actions, such as sending actual alerts.
+
+**Pytest** — A Python testing framework used to automatically check whether code behaves as expected.
 
 ## What does this project demonstrate?
 
@@ -214,7 +240,7 @@ This project connects several common parts of software development into one appl
 
 **API → data collection → database → analytics → dashboard → alerts → automation**
 
-It demonstrates practical **Python, SQL/MySQL, APIs, data analysis, dashboards, testing and automation** skills.
+It demonstrates practical **Python, SQL/MySQL, APIs, data analysis, dashboards, testing, logging and automation** skills.
 
 ## Future improvements
 
